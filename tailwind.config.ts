@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -84,11 +85,38 @@ export default {
 					to: {
 						height: '0'
 					}
+				},
+				'wave': {
+					'0%, 100%': {
+						transform: 'rotate(30deg)'
+					},
+					'50%': {
+						transform: 'rotate(45deg)'
+					}
+				},
+				'pulse': {
+					'0%, 100%': {
+						opacity: '0.6'
+					},
+					'50%': {
+						opacity: '1'
+					}
+				},
+				'pointing': {
+					'0%, 100%': {
+						transform: 'translateY(0)'
+					},
+					'50%': {
+						transform: 'translateY(-5px)'
+					}
 				}
 			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'wave': 'wave 1s ease-in-out infinite',
+				'pulse': 'pulse 2s infinite',
+				'pointing': 'pointing 1s ease-in-out infinite'
 			}
 		}
 	},
