@@ -12,11 +12,13 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
   const [volume, setVolume] = useState(0);
   const [mouthOpenness, setMouthOpenness] = useState(0);
   const [blinkState, setBlinkState] = useState(false);
+  const [handGesture, setHandGesture] = useState(0); // 0: normal, 1: raised, 2: waving
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const micStreamRef = useRef<MediaStream | null>(null);
   const blinkTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const gestureTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const startListening = async () => {
     try {
@@ -35,6 +37,7 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
       
       setIsListening(true);
       processAudio();
+      startRandomGestures();
     } catch (error) {
       console.error('Error accessing microphone:', error);
     }
@@ -56,10 +59,16 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
       audioContextRef.current = null;
     }
 
+    if (gestureTimerRef.current) {
+      clearTimeout(gestureTimerRef.current);
+      gestureTimerRef.current = null;
+    }
+
     analyserRef.current = null;
     setIsListening(false);
     setVolume(0);
     setMouthOpenness(0);
+    setHandGesture(0);
   };
 
   const processAudio = () => {
@@ -78,15 +87,46 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
       
       // Smooth mouth movement with some easing
       setMouthOpenness(prev => {
-        const target = normalizedVolume * 30; // Max height of 30px
+        const target = normalizedVolume * 20; // Max mouth openness
         const easing = 0.3; // Adjust for faster/slower response
         return prev + (target - prev) * easing;
       });
+      
+      // Update hand gestures based on volume intensity
+      if (normalizedVolume > 0.7 && handGesture === 0) {
+        // High volume triggers gesture change
+        setHandGesture(Math.floor(Math.random() * 2) + 1);
+        
+        // Reset gesture after a short delay
+        setTimeout(() => {
+          setHandGesture(0);
+        }, 1000);
+      }
       
       animationFrameRef.current = requestAnimationFrame(updateMouth);
     };
     
     animationFrameRef.current = requestAnimationFrame(updateMouth);
+  };
+
+  // Random hand gestures during listening
+  const startRandomGestures = () => {
+    const makeRandomGesture = () => {
+      // Only make gestures occasionally
+      if (Math.random() > 0.7) {
+        setHandGesture(Math.floor(Math.random() * 2) + 1);
+        
+        // Reset gesture after 1-2 seconds
+        setTimeout(() => {
+          setHandGesture(0);
+        }, Math.random() * 1000 + 1000);
+      }
+      
+      // Schedule next gesture
+      gestureTimerRef.current = setTimeout(makeRandomGesture, Math.random() * 3000 + 2000);
+    };
+    
+    gestureTimerRef.current = setTimeout(makeRandomGesture, Math.random() * 3000 + 1000);
   };
 
   // Blinking animation
@@ -121,117 +161,81 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
       }
+      if (gestureTimerRef.current) {
+        clearTimeout(gestureTimerRef.current);
+      }
       stopListening();
     };
   }, []);
 
-  // Character movement animation
-  const headMovement = volume > 0.2 ? {
-    transform: `translateY(${Math.sin(Date.now() / 300) * volume * 3}px) 
-                rotate(${Math.sin(Date.now() / 400) * volume * 2}deg)`
-  } : {};
+  // Floating animation
+  const floatingStyle = {
+    transform: `translateY(${Math.sin(Date.now() / 1000) * 5}px)`
+  };
 
   return (
     <div className={`flex flex-col items-center ${className}`}>
-      <div className="relative w-64 h-[500px] flex flex-col items-center">
-        {/* Full character container */}
-        <div className="relative">
+      <div className="relative w-64 h-[400px] flex flex-col items-center">
+        {/* Robot container with floating animation */}
+        <div className="relative transition-transform duration-300 ease-in-out" style={floatingStyle}>
           {/* Head */}
-          <div 
-            className="relative w-56 h-64 bg-[#FFD6BC] rounded-full mb-2"
-            style={headMovement}
-          >
-            {/* Hair */}
-            <div className="absolute w-64 h-40 bg-[#221F26] -top-10 -left-4 rounded-t-[100px]"></div>
-            <div className="absolute w-16 h-20 bg-[#221F26] -right-2 top-8 rounded-br-[40px]"></div>
-            <div className="absolute w-16 h-20 bg-[#221F26] -left-2 top-8 rounded-bl-[40px]"></div>
-            
-            {/* Face */}
-            <div className="absolute top-0 w-full h-full">
+          <div className="relative w-56 h-56 bg-gray-200 rounded-3xl flex items-center justify-center">
+            {/* Screen/Face */}
+            <div className="w-48 h-40 bg-[#1A3E5A] rounded-2xl overflow-hidden relative">
               {/* Eyes */}
-              <div className="absolute top-1/3 left-1/4 transform -translate-x-1/2 w-10 h-5 bg-white rounded-full flex items-center justify-center overflow-hidden">
-                <div className={`w-5 h-5 bg-black rounded-full ${blinkState ? 'h-0.5' : ''}`} 
-                    style={{ transform: `translateY(${volume > 0.4 ? -1 : 0}px)` }} />
+              <div className="absolute top-[30%] left-[25%] w-8 h-5 bg-[#5DCBF0] rounded-full opacity-90"
+                  style={{ height: blinkState ? '1px' : '20px' }}>
               </div>
-              <div className="absolute top-1/3 right-1/4 transform translate-x-1/2 w-10 h-5 bg-white rounded-full flex items-center justify-center overflow-hidden">
-                <div className={`w-5 h-5 bg-black rounded-full ${blinkState ? 'h-0.5' : ''}`}
-                    style={{ transform: `translateY(${volume > 0.4 ? -1 : 0}px)` }} />
-              </div>
-
-              {/* Eyebrows */}
-              <div className="absolute top-[28%] left-[20%] w-10 h-1.5 bg-[#221F26] rounded-full" 
-                  style={{ transform: `rotate(-5deg) translateY(${volume > 0.6 ? -2 : 0}px)` }}></div>
-              <div className="absolute top-[28%] right-[20%] w-10 h-1.5 bg-[#221F26] rounded-full"
-                  style={{ transform: `rotate(5deg) translateY(${volume > 0.6 ? -2 : 0}px)` }}></div>
-
-              {/* Nose */}
-              <div className="absolute top-[50%] left-1/2 transform -translate-x-1/2 w-6 h-4 bg-[#FDE1D3] rounded-full"></div>
-
-              {/* Mouth */}
-              <div className="absolute bottom-[25%] left-1/2 transform -translate-x-1/2 w-24 h-10 flex items-center justify-center">
-                <div className="w-24 h-3 bg-black rounded-b-full overflow-hidden">
-                  <div 
-                    className="w-full bg-[#ea384c] transition-all duration-100 ease-out rounded-b-full" 
-                    style={{ height: `${Math.max(3, mouthOpenness)}px` }} 
-                  />
-                </div>
+              <div className="absolute top-[30%] right-[25%] w-8 h-5 bg-[#5DCBF0] rounded-full opacity-90"
+                  style={{ height: blinkState ? '1px' : '20px' }}>
               </div>
               
-              {/* Cheeks */}
-              <div className="absolute bottom-[30%] left-[15%] w-8 h-4 bg-[#FFDEE2] rounded-full opacity-60"></div>
-              <div className="absolute bottom-[30%] right-[15%] w-8 h-4 bg-[#FFDEE2] rounded-full opacity-60"></div>
+              {/* Mouth */}
+              <div className="absolute bottom-[25%] left-1/2 transform -translate-x-1/2 w-20 h-2 flex items-center justify-center">
+                <div className="w-full bg-[#5DCBF0] rounded-full overflow-hidden opacity-90"
+                    style={{ height: `${Math.max(2, mouthOpenness)}px` }}>
+                </div>
+              </div>
             </div>
+            
+            {/* Headphones */}
+            <div className="absolute -left-4 top-1/2 transform -translate-y-1/2 w-4 h-16 bg-gray-300 rounded-l-lg"></div>
+            <div className="absolute -right-4 top-1/2 transform -translate-y-1/2 w-4 h-16 bg-gray-300 rounded-r-lg"></div>
+            <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-30 h-4 bg-gray-300 rounded-t-lg"></div>
           </div>
           
           {/* Body */}
-          <div className="w-40 h-[180px] bg-[#9b87f5] mx-auto rounded-t-xl">
-            {/* Neck */}
-            <div className="w-12 h-10 bg-[#FFD6BC] mx-auto -mt-1 rounded-b-md"></div>
+          <div className="w-40 h-48 bg-gray-200 mx-auto rounded-3xl mt-2 relative overflow-visible">
+            {/* Glowing line */}
+            <div className="absolute top-1/3 left-1/2 transform -translate-x-1/2 w-32 h-1 bg-[#5DCBF0] rounded-full"
+                style={{ 
+                  boxShadow: isListening ? '0 0 10px 2px rgba(93, 203, 240, 0.7)' : 'none',
+                  opacity: isListening ? '0.9' : '0.6'
+                }}>
+            </div>
             
-            {/* Arms */}
-            <div className="relative w-full">
-              {/* Left arm */}
-              <div className="absolute -left-16 top-10 w-20 h-10 bg-[#FFD6BC] rounded-full" 
-                   style={{ transform: `rotate(${volume > 0.5 ? -15 : -20}deg)` }}>
-                {/* Left hand */}
-                <div className="absolute right-0 bottom-0 w-12 h-12 bg-[#FFD6BC] rounded-full 
-                               transform rotate-12 translate-x-1 translate-y-1"></div>
-                {/* Fingers */}
-                <div className="absolute right-0 bottom-1 w-3 h-6 bg-[#FFD6BC] rounded-full 
-                               transform rotate-45 translate-x-6 translate-y-1"></div>
-              </div>
-              
-              {/* Right arm */}
-              <div className="absolute -right-16 top-10 w-20 h-10 bg-[#FFD6BC] rounded-full"
-                   style={{ transform: `rotate(${volume > 0.5 ? 15 : 20}deg)` }}>
-                {/* Right hand */}
-                <div className="absolute left-0 bottom-0 w-12 h-12 bg-[#FFD6BC] rounded-full 
-                               transform rotate-12 -translate-x-1 translate-y-1"></div>
-                {/* Fingers */}
-                <div className="absolute left-0 bottom-1 w-3 h-6 bg-[#FFD6BC] rounded-full 
-                               transform -rotate-45 -translate-x-6 translate-y-1"></div>
-              </div>
+            {/* Arms/Hands */}
+            <div className={`absolute -left-14 top-12 w-14 h-8 bg-gray-200 rounded-full transform origin-right transition-all duration-300 ${
+              handGesture === 1 ? 'rotate-[-60deg]' : handGesture === 2 ? 'rotate-[-30deg] animate-[wave_1s_ease-in-out_infinite]' : ''
+            }`}>
+              <div className="absolute right-0 top-0 w-10 h-10 bg-gray-200 rounded-full"></div>
+            </div>
+            
+            <div className={`absolute -right-14 top-12 w-14 h-8 bg-gray-200 rounded-full transform origin-left transition-all duration-300 ${
+              handGesture === 1 ? 'rotate-[60deg]' : handGesture === 2 ? 'rotate-[30deg] animate-[wave_1s_ease-in-out_infinite]' : ''
+            }`}>
+              <div className="absolute left-0 top-0 w-10 h-10 bg-gray-200 rounded-full"></div>
             </div>
           </div>
           
-          {/* Legs */}
-          <div className="relative w-full mt-1">
-            {/* Left leg */}
-            <div className="absolute left-1/2 transform -translate-x-[30px] w-14 h-40 bg-[#8E9196] rounded-t-lg"></div>
-            
-            {/* Right leg */}
-            <div className="absolute left-1/2 transform translate-x-[14px] w-14 h-40 bg-[#8E9196] rounded-t-lg"></div>
-            
-            {/* Feet */}
-            <div className="absolute left-1/2 transform -translate-x-[40px] bottom-0 w-20 h-8 bg-[#221F26] rounded-l-xl rounded-br-md"></div>
-            <div className="absolute left-1/2 transform translate-x-[20px] bottom-0 w-20 h-8 bg-[#221F26] rounded-r-xl rounded-bl-md"></div>
-          </div>
+          {/* Shadow */}
+          <div className="absolute bottom-[-20px] left-1/2 transform -translate-x-1/2 w-40 h-10 bg-gray-200 rounded-full opacity-20"></div>
         </div>
       </div>
       
       <Button
         onClick={isListening ? stopListening : startListening}
-        className={`mt-4 px-6 ${isListening ? 'bg-red-500 hover:bg-red-600' : 'bg-purple-500 hover:bg-purple-600'}`}
+        className={`mt-8 px-6 ${isListening ? 'bg-red-500 hover:bg-red-600' : 'bg-purple-500 hover:bg-purple-600'}`}
       >
         {isListening ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
         {isListening ? 'Stop' : 'Start'} Listening
@@ -244,7 +248,7 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
             Listening to audio input...
           </div>
         ) : (
-          <p>Click the button above to enable microphone access and start lip syncing.</p>
+          <p>Click the button above to enable microphone access and start animation.</p>
         )}
       </div>
     </div>
