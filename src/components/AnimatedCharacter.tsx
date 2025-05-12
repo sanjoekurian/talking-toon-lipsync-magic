@@ -1,13 +1,16 @@
-
 import React, { useEffect, useRef, useState } from 'react';
 import { Mic, MicOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 interface AnimatedCharacterProps {
   className?: string;
+  audioElement?: React.RefObject<HTMLAudioElement>;
 }
 
-const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' }) => {
+const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ 
+  className = '',
+  audioElement
+}) => {
   const [isListening, setIsListening] = useState(false);
   const [volume, setVolume] = useState(0);
   const [mouthOpenness, setMouthOpenness] = useState(0);
@@ -19,6 +22,71 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
   const micStreamRef = useRef<MediaStream | null>(null);
   const blinkTimerRef = useRef<NodeJS.Timeout | null>(null);
   const gestureTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  // Setup audio analyzer when audioElement is provided and audio is playing
+  useEffect(() => {
+    if (!audioElement?.current) return;
+    
+    const audio = audioElement.current;
+    
+    const handlePlay = () => {
+      if (!audioContextRef.current) {
+        const audioContext = new AudioContext();
+        audioContextRef.current = audioContext;
+        
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyserRef.current = analyser;
+        
+        const source = audioContext.createMediaElementSource(audio);
+        audioSourceRef.current = source;
+        source.connect(analyser);
+        analyser.connect(audioContext.destination);
+      }
+      
+      setIsListening(true);
+      processAudio();
+      startRandomGestures();
+    };
+    
+    const handlePause = () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      
+      setIsListening(false);
+      setVolume(0);
+      setMouthOpenness(0);
+      setHandGesture(0);
+    };
+    
+    const handleEnded = () => {
+      handlePause();
+    };
+    
+    // Add event listeners
+    audio.addEventListener('play', handlePlay);
+    audio.addEventListener('pause', handlePause);
+    audio.addEventListener('ended', handleEnded);
+    
+    // Remove event listeners on cleanup
+    return () => {
+      audio.removeEventListener('play', handlePlay);
+      audio.removeEventListener('pause', handlePause);
+      audio.removeEventListener('ended', handleEnded);
+      
+      // Clean up audio context and connections
+      if (audioContextRef.current) {
+        if (audioSourceRef.current) {
+          audioSourceRef.current.disconnect();
+        }
+        audioContextRef.current.close();
+        audioContextRef.current = null;
+      }
+    };
+  }, [audioElement]);
 
   const startListening = async () => {
     try {
@@ -54,7 +122,9 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
       micStreamRef.current = null;
     }
 
-    if (audioContextRef.current) {
+    if (audioContextRef.current && !audioElement) {
+      // Only close the context if we're not using the audio element
+      // otherwise it would disconnect the audio playback
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
@@ -64,11 +134,14 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
       gestureTimerRef.current = null;
     }
 
-    analyserRef.current = null;
-    setIsListening(false);
-    setVolume(0);
-    setMouthOpenness(0);
-    setHandGesture(0);
+    if (!audioElement?.current?.paused) {
+      // If we're not closing because audio element is paused
+      analyserRef.current = null;
+      setIsListening(false);
+      setVolume(0);
+      setMouthOpenness(0);
+      setHandGesture(0);
+    }
   };
 
   const processAudio = () => {
@@ -173,6 +246,9 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
     transform: `translateY(${Math.sin(Date.now() / 1000) * 5}px)`
   };
 
+  // Only show microphone controls if no audio element is provided
+  const showMicControls = !audioElement || !audioElement.current;
+
   return (
     <div className={`flex flex-col items-center ${className}`}>
       <div className="relative w-64 h-[400px] flex flex-col items-center">
@@ -233,24 +309,28 @@ const AnimatedCharacter: React.FC<AnimatedCharacterProps> = ({ className = '' })
         </div>
       </div>
       
-      <Button
-        onClick={isListening ? stopListening : startListening}
-        className={`mt-8 px-6 ${isListening ? 'bg-red-500 hover:bg-red-600' : 'bg-purple-500 hover:bg-purple-600'}`}
-      >
-        {isListening ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
-        {isListening ? 'Stop' : 'Start'} Listening
-      </Button>
+      {showMicControls && (
+        <Button
+          onClick={isListening ? stopListening : startListening}
+          className={`mt-8 px-6 ${isListening ? 'bg-red-500 hover:bg-red-600' : 'bg-purple-500 hover:bg-purple-600'}`}
+        >
+          {isListening ? <MicOff className="mr-2 h-4 w-4" /> : <Mic className="mr-2 h-4 w-4" />}
+          {isListening ? 'Stop' : 'Start'} Listening
+        </Button>
+      )}
       
-      <div className="text-center text-sm text-gray-500 max-w-sm mt-4">
-        {isListening ? (
-          <div className="flex items-center gap-2 justify-center">
-            <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-            Listening to audio input...
-          </div>
-        ) : (
-          <p>Click the button above to enable microphone access and start animation.</p>
-        )}
-      </div>
+      {showMicControls && (
+        <div className="text-center text-sm text-gray-500 max-w-sm mt-4">
+          {isListening ? (
+            <div className="flex items-center gap-2 justify-center">
+              <span className="inline-block w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              Listening to audio input...
+            </div>
+          ) : (
+            <p>Click the button above to enable microphone access and start animation.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 };
